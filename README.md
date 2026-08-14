@@ -29,59 +29,136 @@ running:
 
 ## Deploy to Railway
 
-**Before you start**, you need two values: a **backup phrase** for the relay's
-identity, and the **network id** it serves. Generate both with the harness from
-the protocol repository:
+Railway is the quickest way to run one. The whole process is about ten minutes,
+and a relay is light enough to sit comfortably inside a free tier — it forwards
+connection setup, not conversations.
+
+### Before you start
+
+You need three things:
+
+- A [Railway](https://railway.app) account, with your GitHub account connected.
+- A **backup phrase** for the relay's identity.
+- The **network id** the relay will serve.
+
+Generate the first two from the [protocol
+repository](https://github.com/DriftingNarwhal/distributed-intranet):
 
 ```bash
 cargo run -p intranet-harness -- identity new
 ```
 
-Keep the phrase secret — anyone holding it can impersonate this relay to your
-network.
+That prints a BIP-39 backup phrase. **Keep it secret** — anyone holding it can
+impersonate this relay to your network. Store it the way you would an SSH private
+key.
 
-### 1. Create the service
+Your network id is the 64-character hex string identifying the network you are
+running this relay for. If you are standing up a new network, it is printed when
+you create it.
 
-Railway → **New Project** → **Deploy from GitHub repo** → select this repository.
+### Step 1 — Create the project
 
-### 2. Set variables before the first deploy
+1. Go to [railway.app/new](https://railway.app/new).
+2. Choose **Deploy from GitHub repo**.
+3. Pick this repository. If Railway cannot see it, click **Configure GitHub App**
+   and grant access to it.
 
-Service → **Variables**:
+Railway will start a build immediately. It will fail or restart until you finish
+step 2 — that is expected, not a problem.
+
+### Step 2 — Set the variables
+
+Open your service → **Variables** tab → **New Variable**, and add:
 
 | Key | Value |
 |---|---|
-| `RELAY_PHRASE` | The backup phrase from above |
-| `RELAY_NETWORK` | Your network id (64 hex characters) |
+| `RELAY_PHRASE` | The backup phrase from above, in quotes if it contains spaces |
+| `RELAY_NETWORK` | Your 64-character network id |
 | `PORT` | `8080` |
 
-The service will fail to start without the first two, deliberately — a relay
-that generated a fresh identity on boot would get a new peer id every deploy and
-silently invalidate every bootstrap address anyone had recorded.
+`RELAY_PHRASE` and `RELAY_NETWORK` have no defaults on purpose. A relay that
+invented an identity at boot would come back with a different peer id after every
+deploy, silently breaking every bootstrap address anyone had written down.
 
-### 3. Set up networking
+`PORT` is Railway's convention for the port it routes public HTTP to. Here that
+is the health endpoint, not the libp2p port.
 
-Settings → **Networking**. You need **both**:
+### Step 3 — Set up networking
 
-- **Public Networking → Generate Domain.** Gives you an HTTPS domain routed to
-  `PORT`. This serves `/health` and `/peer-id`, which is how a client confirms it
-  is reaching the relay it intends to.
-- **TCP Proxy → Add TCP Proxy**, port `4001`. Gives you a host and port like
-  `monorail.proxy.rlwy.net:54321`. This is the actual libp2p path.
+Service → **Settings** → **Networking**. You need **both** of these, and it is
+easy to add only the first:
 
-Without the domain the health check fails; without the TCP proxy nothing can
-connect. They are separate entries and it is easy to set only the first.
+**Public Networking** → **Generate Domain**. Railway gives you something like
+`di-relay-production.up.railway.app` and routes HTTPS to `PORT`. This serves the
+health and peer-id endpoints.
 
-### 4. Tell your network about it
+**TCP Proxy** → **Add TCP Proxy** → enter port `4001`. Railway gives you a host
+and port like `monorail.proxy.rlwy.net:54321`. This is the actual libp2p path —
+the one peers connect through.
 
-Take the peer id from `https://your-domain/peer-id` and the TCP proxy host and
-port from step 3. The bootstrap address is:
+Without the domain, the health check fails and Railway keeps restarting the
+service. Without the TCP proxy, the service looks perfectly healthy and no peer
+can reach it.
+
+### Step 4 — Check it came up
+
+Visit `https://your-domain.up.railway.app/health`. You want:
+
+```json
+{"status":"ready","listening":["/ip4/0.0.0.0/tcp/4001", …]}
+```
+
+`{"status":"starting"}` with a `503` means the process is up but not yet
+listening. If it stays that way, check the deploy logs — the relay prints every
+address it binds.
+
+Then visit `/peer-id` and copy the value:
+
+```json
+{"peer_id":"12D3KooWKiD4GjUwYGbXKkHkcHV4i5Wzbq69giWXuDjmv1XAMZx6"}
+```
+
+### Step 5 — Give the address to your network
+
+Combine the TCP proxy host and port from step 3 with the peer id from step 4:
 
 ```
-/dns4/monorail.proxy.rlwy.net/tcp/54321/p2p/<peer-id>
+/dns4/monorail.proxy.rlwy.net/tcp/54321/p2p/12D3KooWKiD4GjUwYGbXKkHkcHV4i5Wzbq69giWXuDjmv1XAMZx6
 ```
 
-Verify the peer id over the HTTPS endpoint rather than trusting whatever answers
-on the TCP port — that check is the point of exposing it separately.
+That is the bootstrap address members configure. Note the port is the **proxy's**
+port, not 4001 — 4001 is what the container listens on inside Railway.
+
+Read the peer id from the HTTPS endpoint rather than trusting whatever answers on
+the TCP port. That is why the two are exposed separately: it lets a member
+confirm they are reaching the relay they intended rather than something sitting
+in its place.
+
+### Step 6 — Consider running a second one
+
+Nothing in steady-state operation depends on any particular relay, and a network
+can designate several. Running two in different places costs very little and
+removes the only piece of shared infrastructure a network has.
+
+### Troubleshooting
+
+**Build fails while fetching the protocol repository.** The build needs read
+access to `distributed-intranet`. If it is private, add a GitHub token with
+`repo` scope as a build variable, or make that repository public.
+
+**Health check times out during deploy.** Almost always a missing public domain
+(step 3) or a `PORT` that does not match the one Railway is routing to.
+
+**Health is `ready` but peers cannot connect.** The TCP proxy is missing, or is
+pointed at a port other than `4001`. Confirm with
+`nc -vz monorail.proxy.rlwy.net 54321`.
+
+**Peers connect but relayed connections fail.** See `RELAY_PUBLIC_ADDR` under
+Configuration. This is the failure that looks like nothing is wrong: direct
+connections keep working and health keeps reporting ready.
+
+**The peer id changed after a deploy.** `RELAY_PHRASE` is missing or was edited.
+Every bootstrap address referencing the old id is now stale.
 
 ## Configuration
 
@@ -139,16 +216,34 @@ Then `curl localhost:8080/health`. It answers `503` until the listeners are up
 and `200` after, so this is also the quickest way to see whether the port is
 already taken.
 
-## How this relates to the protocol repository
+## The protocol this serves
 
-The relay itself is `intranet_transport::RelayNode`, not a reimplementation. This
-repository is a deployment wrapper: configuration, a health endpoint, and clean
-shutdown.
+This repository is only the relay. The protocol it belongs to — what a network
+is, how membership and governance work, how content is stored, encrypted,
+searched and served — lives in
+**[DriftingNarwhal/distributed-intranet](https://github.com/DriftingNarwhal/distributed-intranet)**.
 
-That is deliberate. `RelayNode` is covered by the upstream conformance suite —
-its reservation and circuit ceilings are asserted against a live relay rather
-than against a model of one, because a limiter that computes a decision and never
-enforces it is a real defect that has been found in relay code before. A
+Start with
+[its README](https://github.com/DriftingNarwhal/distributed-intranet#readme),
+which covers what the project is, what you can build on it, and what it
+deliberately is not. The design itself is six specification documents in
+[`specs/`](https://github.com/DriftingNarwhal/distributed-intranet/tree/main/specs);
+relays are Core Protocol Spec §5.2–5.5.
+
+You do not need to read any of it to run a relay. You will want it if you are
+deciding whether to run one, or wondering why a relay is allowed to be untrusted.
+
+### Why this is a wrapper and not a relay implementation
+
+The relay itself is `intranet_transport::RelayNode`, pulled from that repository
+at tag `v1.0.0`. This binary only reads configuration, serves health, starts it,
+and shuts down cleanly.
+
+That is deliberate. `RelayNode` is covered by the protocol repository's
+conformance suite — its reservation and circuit ceilings are asserted against a
+*live* relay rather than against a model of one, because a limiter that computes
+a decision and never enforces it is a real defect that has been found in relay
+code before, including in an earlier relay this one was modelled on. A
 hand-rolled relay here would be a second copy of that logic, free to drift from
 the copy the tests actually exercise.
 
