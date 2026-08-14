@@ -1,0 +1,20 @@
+[package]
+name = "di-relay"
+version = "1.0.0"
+edition = "2024"
+description = "Bootstrap relay for a Distributed Intranet network — circuit relay v2, identify, ping, Kademlia"
+license = "MIT OR Apache-2.0"
+
+[[bin]]
+name = "di-relay"
+path = "src/main.rs"
+
+[dependencies]
+# The relay itself is `intranet_transport::RelayNode`, not a reimplementation.
+# That matters: RelayNode enforces §5.3's ceilings against a live relay and
+# announces its external addresses, both of which are covered by tests in the
+# upstream repository. A hand-rolled relay here would be a second copy of that
+# logic, free to drift from the copy the conformance suite actually exercises.
+intranet-transport = { git = "https://github.com/DriftingNarwhal/distributed-intranet", tag = "v1.0.0" }
+intranet-identity = { git = "https://github.com/DriftingNarwhal/distributed-intranet", tag = "v1.0.0" }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util", "signal", "time"] }
