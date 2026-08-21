@@ -249,4 +249,19 @@ the copy the tests actually exercise.
 
 ## Licence
 
-MIT OR Apache-2.0, matching the protocol repository.
+**[GNU Affero General Public License v3.0](LICENSE)** — (c) DriftingNarwhal.
+
+Free to run, modify and share. The condition is that it stays that way: **if you run a
+modified version of this relay for other people, you must publish the complete
+corresponding source under the same licence.** That is the Affero clause, and it is the
+whole reason this repository is AGPL rather than something weaker — a relay is a service by
+definition, so a licence that only triggered on *distribution* would never trigger at all
+here. Anyone whose traffic depends on a relay should be able to obtain the source of the
+relay they are depending on.
+
+Note this does not reach the network it serves: a relay carries bytes for members and holds
+no state, so running one places no licence obligation on anybody's client or content.
+
+The protocol crates this links are
+[MPL-2.0](https://github.com/DriftingNarwhal/distributed-intranet), which MPL §3.3 permits
+being combined into an AGPL work.
