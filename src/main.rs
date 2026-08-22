@@ -39,6 +39,15 @@ struct Health {
     ready: bool,
     peer_id: Option<String>,
     listening: Vec<String>,
+    /// What this relay tells clients it can be reached on.
+    ///
+    /// Reported separately from `listening`, because they answer different
+    /// questions and the difference is the whole of one failure. A relay behind
+    /// a proxy *listens* on a private container address and must *announce* the
+    /// proxy's — and a reservation carries the announced set, so a relay with an
+    /// empty one grants reservations that name no address. Clients then reject
+    /// them, while listening looks healthy and the process looks fine.
+    announcing: Vec<String>,
 }
 
 #[tokio::main]
@@ -65,9 +74,27 @@ async fn main() -> Result<(), String> {
 
     // Announced before listening, so the first reservation already has an
     // address list to return.
-    for address in multiaddrs_from_env("RELAY_PUBLIC_ADDR")? {
+    let announced = multiaddrs_from_env("RELAY_PUBLIC_ADDR")?;
+    for address in &announced {
         println!("announcing: {address}");
-        relay.add_public_address(address);
+        relay.add_public_address(address.clone());
+    }
+    health.lock().expect("health lock").announcing =
+        announced.iter().map(ToString::to_string).collect();
+
+    // Said at startup, where somebody deploying this is already looking, rather
+    // than left to be inferred from clients failing later. A relay whose own
+    // listen addresses are routable does not need this; one behind a proxy or a
+    // load balancer does, and cannot tell which it is.
+    if announced.is_empty() {
+        println!(
+            "warning: RELAY_PUBLIC_ADDR is not set, so this relay announces only \
+             the addresses it binds. Behind a proxy those are private, and a \
+             reservation naming them is granted and then rejected by the client — \
+             which looks like a relay that is working. Set it to the address peers \
+             actually reach, with no /p2p/ suffix, e.g. \
+             RELAY_PUBLIC_ADDR=/dns4/host.proxy.example/tcp/54321"
+        );
     }
 
     let listen = match multiaddrs_from_env("RELAY_LISTEN")? {
@@ -319,6 +346,12 @@ fn spawn_health_endpoint(port: u16, health: Arc<Mutex<Health>>) {
                     .unwrap_or_else(|| "null".into());
                 ("200 OK", format!("{{\"peer_id\":{peer_id}}}"))
             } else if path.starts_with("/health") {
+                let announcing = snapshot
+                    .announcing
+                    .iter()
+                    .map(|address| format!("\"{address}\""))
+                    .collect::<Vec<_>>()
+                    .join(",");
                 let listening = snapshot
                     .listening
                     .iter()
@@ -326,7 +359,7 @@ fn spawn_health_endpoint(port: u16, health: Arc<Mutex<Health>>) {
                     .collect::<Vec<_>>()
                     .join(",");
                 let body = format!(
-                    "{{\"status\":\"{}\",\"listening\":[{listening}]}}",
+                    "{{\"status\":\"{}\",\"listening\":[{listening}],\"announcing\":[{announcing}]}}",
                     if snapshot.ready { "ready" } else { "starting" }
                 );
                 // 503 until the relay is actually listening. A platform health
