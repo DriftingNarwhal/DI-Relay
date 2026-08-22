@@ -183,8 +183,14 @@ identity from a single byte and exists only so a local test can be reproducible.
 
 ### About `RELAY_PUBLIC_ADDR`
 
-**On Railway you need it.** Paste the **TCP Proxy** value from Settings → Networking
-exactly as shown — `monorail.proxy.rlwy.net:54321`. Both forms work:
+**On Railway you should not need to set it at all.** The platform exports
+`RAILWAY_TCP_PROXY_DOMAIN` and `RAILWAY_TCP_PROXY_PORT`, and the relay uses them when
+`RELAY_PUBLIC_ADDR` says nothing — so a TCP proxy is all that is required. Startup logs
+which address it chose.
+
+Set it explicitly to override that, or anywhere else behind a proxy. Paste the **TCP
+Proxy** value from Settings → Networking exactly as shown —
+`monorail.proxy.rlwy.net:54321`. Both forms work:
 
 ```
 RELAY_PUBLIC_ADDR=monorail.proxy.rlwy.net:54321

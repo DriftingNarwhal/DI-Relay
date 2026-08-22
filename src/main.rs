@@ -74,7 +74,10 @@ async fn main() -> Result<(), String> {
 
     // Announced before listening, so the first reservation already has an
     // address list to return.
-    let announced = multiaddrs_from_env("RELAY_PUBLIC_ADDR")?;
+    let announced = match multiaddrs_from_env("RELAY_PUBLIC_ADDR")? {
+        addresses if !addresses.is_empty() => addresses,
+        _ => railway_proxy_address()?,
+    };
     for address in &announced {
         println!("announcing: {address}");
         relay.add_public_address(address.clone());
@@ -88,7 +91,7 @@ async fn main() -> Result<(), String> {
     // load balancer does, and cannot tell which it is.
     if announced.is_empty() {
         println!(
-            "warning: RELAY_PUBLIC_ADDR is not set, so this relay announces only \
+            "warning: this relay announces only \
              the addresses it binds. Behind a proxy those are private, and a \
              reservation naming them is granted and then rejected by the client — \
              which looks like a relay that is working. Set it to the address peers \
@@ -292,6 +295,37 @@ fn multiaddrs_from_env(name: &str) -> Result<Vec<Multiaddr>, String> {
         .filter(|entry| !entry.is_empty())
         .map(|entry| parse_address(name, entry))
         .collect()
+}
+
+/// The proxy address Railway already knows, when nothing was configured.
+///
+/// # Why guess at all
+///
+/// Because the alternative is what happened the first time this was deployed: a
+/// relay that answers, reports healthy, grants reservations and hands back no
+/// address, while every dashboard page looks correct. The one variable that
+/// fixes it is invisible from the symptom, and the platform *already knows* the
+/// answer — `RAILWAY_TCP_PROXY_DOMAIN` and `RAILWAY_TCP_PROXY_PORT` are set in
+/// the environment by the same TCP proxy whose address is wanted.
+///
+/// Only when `RELAY_PUBLIC_ADDR` says nothing, so it stays the override.
+fn railway_proxy_address() -> Result<Vec<Multiaddr>, String> {
+    let (Ok(domain), Some(port)) = (
+        std::env::var("RAILWAY_TCP_PROXY_DOMAIN"),
+        env_u16("RAILWAY_TCP_PROXY_PORT"),
+    ) else {
+        return Ok(Vec::new());
+    };
+    let domain = domain.trim();
+    if domain.is_empty() {
+        return Ok(Vec::new());
+    }
+    let address = parse_address("RAILWAY_TCP_PROXY_DOMAIN", &format!("{domain}:{port}"))?;
+    println!(
+        "no RELAY_PUBLIC_ADDR set; using this platform's TCP proxy, {address}. Set \
+         RELAY_PUBLIC_ADDR to override"
+    );
+    Ok(vec![address])
 }
 
 /// A multiaddress, or a `host:port` converted into one.
