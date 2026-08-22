@@ -275,6 +275,13 @@ fn env_u32(name: &str) -> Result<Option<u32>, String> {
 }
 
 /// Reads a comma-separated list of multiaddresses.
+///
+/// **`host:port` is accepted as well**, because that is the form every hosting
+/// dashboard shows. Railway's TCP proxy is displayed as
+/// `monorail.proxy.rlwy.net:54321`, and the obvious thing to do with it — paste
+/// it into `RELAY_PUBLIC_ADDR` — produced "not a valid multiaddress" and a relay
+/// that would not boot. Refusing the one string the platform gives you is a
+/// worse default than converting it.
 fn multiaddrs_from_env(name: &str) -> Result<Vec<Multiaddr>, String> {
     let Ok(value) = std::env::var(name) else {
         return Ok(Vec::new());
@@ -283,12 +290,41 @@ fn multiaddrs_from_env(name: &str) -> Result<Vec<Multiaddr>, String> {
         .split(',')
         .map(str::trim)
         .filter(|entry| !entry.is_empty())
-        .map(|entry| {
-            entry
-                .parse()
-                .map_err(|e| format!("{name}: '{entry}' is not a valid multiaddress: {e}"))
-        })
+        .map(|entry| parse_address(name, entry))
         .collect()
+}
+
+/// A multiaddress, or a `host:port` converted into one.
+fn parse_address(name: &str, entry: &str) -> Result<Multiaddr, String> {
+    if entry.starts_with('/') {
+        return entry
+            .parse()
+            .map_err(|e| format!("{name}: '{entry}' is not a valid multiaddress: {e}"));
+    }
+
+    let (host, port) = entry.rsplit_once(':').ok_or_else(|| {
+        format!(
+            "{name}: '{entry}' is neither a multiaddress nor host:port. Give either \
+             /dns4/host.example/tcp/54321 or host.example:54321"
+        )
+    })?;
+    let port: u16 = port.trim().parse().map_err(|_| {
+        format!("{name}: '{entry}' ends in '{port}', which is not a port number")
+    })?;
+    // Bracketed IPv6 as a dashboard prints it, then a literal address, then a
+    // name. `dns4` rather than `dns` because every documented relay address uses
+    // it, and a client matches a relay's address family against its own
+    // listeners before dialling.
+    let host = host.trim().trim_start_matches('[').trim_end_matches(']');
+    let prefix = match host.parse::<std::net::IpAddr>() {
+        Ok(std::net::IpAddr::V4(_)) => "ip4",
+        Ok(std::net::IpAddr::V6(_)) => "ip6",
+        Err(_) => "dns4",
+    };
+    let built = format!("/{prefix}/{host}/tcp/{port}");
+    built
+        .parse()
+        .map_err(|e| format!("{name}: '{entry}' became '{built}', which is not valid: {e}"))
 }
 
 async fn shutdown_signal() {
@@ -387,4 +423,47 @@ fn spawn_health_endpoint(port: u16, health: Arc<Mutex<Health>>) {
             let _ = socket.shutdown().await;
         }
     });
+}
+
+#[cfg(test)]
+mod address_tests {
+    use super::parse_address;
+
+    #[test]
+    fn a_multiaddress_is_taken_as_it_is() {
+        let given = "/dns4/monorail.proxy.rlwy.net/tcp/54321";
+        assert_eq!(parse_address("T", given).unwrap().to_string(), given);
+    }
+
+    #[test]
+    fn host_port_is_what_a_dashboard_shows_and_is_converted() {
+        // The exact paste that failed: Railway prints the TCP proxy this way.
+        assert_eq!(
+            parse_address("T", "monorail.proxy.rlwy.net:54321")
+                .unwrap()
+                .to_string(),
+            "/dns4/monorail.proxy.rlwy.net/tcp/54321"
+        );
+    }
+
+    #[test]
+    fn literal_addresses_keep_their_family() {
+        assert_eq!(
+            parse_address("T", "198.51.100.7:4001").unwrap().to_string(),
+            "/ip4/198.51.100.7/tcp/4001"
+        );
+        assert_eq!(
+            parse_address("T", "[2001:db8::1]:4001").unwrap().to_string(),
+            "/ip6/2001:db8::1/tcp/4001"
+        );
+    }
+
+    #[test]
+    fn what_cannot_be_read_says_both_accepted_forms() {
+        let refused = parse_address("T", "monorail.proxy.rlwy.net").unwrap_err();
+        assert!(refused.contains("host:port"), "{refused}");
+
+        let refused = parse_address("T", "monorail.proxy.rlwy.net:https").unwrap_err();
+        assert!(refused.contains("port number"), "{refused}");
+    }
 }

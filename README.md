@@ -170,17 +170,36 @@ Every bootstrap address referencing the old id is now stale.
 | `PORT` | no | `8080` | Health and peer-id endpoint |
 | `RELAY_PORT` | no | `4001` | libp2p port, TCP and QUIC |
 | `RELAY_LISTEN` | no | dual-stack on `RELAY_PORT` | Comma-separated multiaddresses, overriding the default entirely |
-| `RELAY_PUBLIC_ADDR` | no | — | Comma-separated multiaddresses to announce |
+| `RELAY_PUBLIC_ADDR` | no² | — | Comma-separated addresses to announce. `host:port` is accepted and converted |
 | `RELAY_MAX_RESERVATIONS` | no | `128` | Concurrent reservations across all peers |
 | `RELAY_MAX_RESERVATIONS_PER_IDENTITY` | no | `4` | Concurrent reservations per identity |
 | `RELAY_MAX_CIRCUITS` | no | `32` | Concurrent relayed circuits |
+
+² Not required by the process, and required in practice behind any proxy or load
+balancer — see below.
 
 ¹ Set `RELAY_PHRASE` for anything real. `RELAY_SEED` derives a fully predictable
 identity from a single byte and exists only so a local test can be reproducible.
 
 ### About `RELAY_PUBLIC_ADDR`
 
-Usually you do not need it. The relay announces its own routable listen
+**On Railway you need it.** Paste the **TCP Proxy** value from Settings → Networking
+exactly as shown — `monorail.proxy.rlwy.net:54321`. Both forms work:
+
+```
+RELAY_PUBLIC_ADDR=monorail.proxy.rlwy.net:54321
+RELAY_PUBLIC_ADDR=/dns4/monorail.proxy.rlwy.net/tcp/54321
+```
+
+Do **not** use the generated **domain** (`*.up.railway.app`). That is HTTPS for the
+health endpoint and cannot carry libp2p. Do not use an address from the deployment
+logs either: those are the container's own, and they change on every deploy.
+
+Confirm it took by opening `/health` — `announcing` should list what you set. If it
+is empty, the variable is not reaching the process, and startup logs a warning
+saying so.
+
+Usually, elsewhere, you do not need it. The relay announces its own routable listen
 addresses, and a client builds its circuit address from whatever address it used
 to reach the relay — so behind Railway's TCP proxy the right thing already
 happens.
