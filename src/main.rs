@@ -248,9 +248,17 @@ fn default_listen(port: u16) -> Result<Vec<Multiaddr>, String> {
 /// Reads the §5.3 resource ceilings, defaulting to the specified values.
 ///
 /// Overridable because §5.3 calls them baseline defaults rather than constants,
-/// and a relay operator knows their own capacity. Raising them is a deliberate
+/// and a relay operator knows their own capacity. Raising one is a deliberate
 /// act, which is why each has its own variable rather than a single "limits"
 /// blob nobody reads before editing.
+///
+/// **Only the counts are here, and the omission is the point.** Reservations and
+/// concurrent circuits are capacity — how much of this host to spend. The
+/// duration and byte ceilings are not capacity; they are how §5.2's rule that a
+/// circuit carries a negotiation and nothing else gets enforced by the relay
+/// rather than by every client's good behaviour. An operator raising those would
+/// not be tuning their relay, they would be opting it out. They come from
+/// `..defaults` and are asserted in `ceiling_tests`.
 fn limits_from_env() -> Result<RelayLimits, String> {
     let defaults = RelayLimits::default();
     Ok(RelayLimits {
@@ -499,5 +507,71 @@ mod address_tests {
 
         let refused = parse_address("T", "monorail.proxy.rlwy.net:https").unwrap_err();
         assert!(refused.contains("port number"), "{refused}");
+    }
+}
+
+#[cfg(test)]
+mod ceiling_tests {
+    use super::limits_from_env;
+
+    /// The ceilings this relay boots with must bound a *negotiation*.
+    ///
+    /// **This test exists because the thing it checks silently stopped being
+    /// true.** The ceilings live upstream in `RelayLimits::default`, reached
+    /// here through `..defaults`, so nothing in this repository mentions them —
+    /// and this crate depends on the protocol by **tag**. When Core §5.2 was
+    /// corrected and §5.3 lowered the figures accordingly, the source changed
+    /// and every deployed relay went on enforcing the old ones, because the tag
+    /// had not moved. A relay is the one component whose whole job is to refuse
+    /// more than a negotiation's worth, and it was not refusing it.
+    ///
+    /// Asserted as a **range rather than as constants**, deliberately. §5.3
+    /// calls these baseline defaults and a later revision is legitimate; what is
+    /// not legitimate is a ceiling loose enough to carry a conversation, which
+    /// is the property that actually failed. So this passes at 60 seconds and
+    /// would pass at 45, and fails at the 120 seconds and 8MB a stale pin
+    /// reintroduces.
+    #[test]
+    fn a_circuit_cannot_carry_a_conversation() {
+        let limits = limits_from_env().expect("no environment overrides in a test");
+
+        // A DCUtR negotiation is two small messages and up to three dial
+        // attempts, on top of Noise and identify. Seconds, not minutes.
+        assert!(
+            (5_000..=90_000).contains(&limits.max_circuit_duration_millis),
+            "a circuit lasting {}ms is a session, not an introduction",
+            limits.max_circuit_duration_millis,
+        );
+
+        // Orders of magnitude above a negotiation and orders of magnitude below
+        // a conversation is the whole of what this number has to be.
+        assert!(
+            (64 * 1024..=1024 * 1024).contains(&limits.max_circuit_bytes),
+            "a circuit carrying {} bytes is transport, not connection establishment",
+            limits.max_circuit_bytes,
+        );
+    }
+
+    /// The two ceilings above take no environment variable, and that is a choice.
+    ///
+    /// `RELAY_MAX_RESERVATIONS` and friends are capacity knobs — an operator
+    /// knows their own host. Duration and bytes are not capacity, they are the
+    /// mechanism §5.2 is enforced by, so an operator raising them is not tuning
+    /// their relay, they are opting their relay out of the rule. Left
+    /// unreachable on purpose; this records why, so it is not added as a
+    /// convenience later.
+    #[test]
+    fn capacity_is_configurable_and_the_rule_is_not() {
+        // SAFETY: single-threaded test process, restored before returning.
+        unsafe { std::env::set_var("RELAY_MAX_CIRCUITS", "64") };
+        let limits = limits_from_env().expect("a valid override");
+        unsafe { std::env::remove_var("RELAY_MAX_CIRCUITS") };
+
+        assert_eq!(limits.max_circuits, 64, "capacity is the operator's to set");
+        assert_eq!(
+            limits.max_circuit_duration_millis,
+            intranet_transport::RelayLimits::default().max_circuit_duration_millis,
+            "the duration ceiling is not reachable from the environment",
+        );
     }
 }

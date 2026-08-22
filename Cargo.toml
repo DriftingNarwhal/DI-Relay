@@ -15,6 +15,6 @@ path = "src/main.rs"
 # announces its external addresses, both of which are covered by tests in the
 # upstream repository. A hand-rolled relay here would be a second copy of that
 # logic, free to drift from the copy the conformance suite actually exercises.
-intranet-transport = { git = "https://github.com/DriftingNarwhal/distributed-intranet", tag = "v1.0.1" }
-intranet-identity = { git = "https://github.com/DriftingNarwhal/distributed-intranet", tag = "v1.0.1" }
+intranet-transport = { git = "https://github.com/DriftingNarwhal/distributed-intranet", tag = "v1.0.2" }
+intranet-identity = { git = "https://github.com/DriftingNarwhal/distributed-intranet", tag = "v1.0.2" }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util", "signal", "time"] }

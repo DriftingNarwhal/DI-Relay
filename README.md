@@ -8,13 +8,22 @@ free tier.
 
 When two members are both behind NAT, neither can dial the other. A relay solves
 that cold start: both connect *out* to it, it introduces them, and they then
-attempt a direct connection through it — first a hole punch, and only if that
-fails does traffic keep flowing over the circuit.
+hole-punch into a direct connection. **If the punch fails, the pair does not
+connect** — the circuit carried the negotiation and is closed, and there is no
+third tier that keeps their traffic flowing over this host (Core §5.2).
 
-**A relay establishes connections; it does not carry traffic.** Circuits are
-capped at 120 seconds and 8 MB by default, and hitting those ceilings is expected
-rather than exceptional. That is why running one is cheap, and why it is not a
-bandwidth commitment. If you want the ceilings, see `RELAY_MAX_*` below.
+**A relay establishes connections; it does not carry traffic**, and it enforces
+that itself rather than trusting clients to be well behaved. Circuits are capped
+at **60 seconds and 256 KB** — orders of magnitude above what a hole-punch
+negotiation costs and orders of magnitude below a conversation. Hitting those
+ceilings is a client doing something a relay is not for.
+
+*Those two figures were 120 seconds and 8 MB before v1.0.2, and they were loose
+enough that a client relaying an entire conversation never met a limit. If you
+are running a relay built from `v1.0.1` or earlier, it is still enforcing the
+old ones.* Reservation and circuit **counts** are yours to tune (`RELAY_MAX_*`
+below); the duration and byte ceilings deliberately take no variable, because
+raising them would not be tuning a relay, it would be opting it out of the rule.
 
 Three further things follow from that, and they are the reason this is worth
 running:
@@ -261,8 +270,15 @@ deciding whether to run one, or wondering why a relay is allowed to be untrusted
 ### Why this is a wrapper and not a relay implementation
 
 The relay itself is `intranet_transport::RelayNode`, pulled from that repository
-at tag `v1.0.0`. This binary only reads configuration, serves health, starts it,
-and shuts down cleanly.
+at the tag `Cargo.toml` names — deliberately not restated here, because a version
+written in prose is one that drifts from the one that builds. This binary only
+reads configuration, serves health, starts it, and shuts down cleanly.
+
+**Which tag is a deployment decision, not a detail.** The ceilings above live in
+`RelayNode`, so moving the pin is what changes what a relay enforces, and leaving
+it still is what kept every deployed relay on the old figures after the spec
+changed. `a_circuit_cannot_carry_a_conversation` in `src/main.rs` fails if a pin
+ever falls that far behind again.
 
 That is deliberate. `RelayNode` is covered by the protocol repository's
 conformance suite — its reservation and circuit ceilings are asserted against a
