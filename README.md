@@ -114,34 +114,43 @@ can reach it.
 Visit `https://your-domain.up.railway.app/health`. You want:
 
 ```json
-{"status":"ready","listening":["/ip4/0.0.0.0/tcp/4001", …]}
+{"status":"ready","listening":["/ip4/0.0.0.0/tcp/4001", …],
+ "announcing":["/dns4/monorail.proxy.rlwy.net/tcp/54321"],
+ "bootstrap":["/dns4/monorail.proxy.rlwy.net/tcp/54321/p2p/12D3KooWKiD4GjUwYGbXKkHkcHV4i5Wzbq69giWXuDjmv1XAMZx6"]}
 ```
 
 `{"status":"starting"}` with a `503` means the process is up but not yet
 listening. If it stays that way, check the deploy logs — the relay prints every
 address it binds.
 
-Then visit `/peer-id` and copy the value:
-
-```json
-{"peer_id":"12D3KooWKiD4GjUwYGbXKkHkcHV4i5Wzbq69giWXuDjmv1XAMZx6"}
-```
-
 ### Step 5 — Give the address to your network
 
-Combine the TCP proxy host and port from step 3 with the peer id from step 4:
+**`bootstrap` is the whole thing. Copy it as it is.**
 
 ```
 /dns4/monorail.proxy.rlwy.net/tcp/54321/p2p/12D3KooWKiD4GjUwYGbXKkHkcHV4i5Wzbq69giWXuDjmv1XAMZx6
 ```
 
-That is the bootstrap address members configure. Note the port is the **proxy's**
-port, not 4001 — 4001 is what the container listens on inside Railway.
+The relay prints the same line on startup, labelled `bootstrap:`, so a deploy log
+answers this question too:
 
-Read the peer id from the HTTPS endpoint rather than trusting whatever answers on
-the TCP port. That is why the two are exposed separately: it lets a member
-confirm they are reaching the relay they intended rather than something sitting
-in its place.
+```
+peer-id: 12D3KooWKiD4GjUwYGbXKkHkcHV4i5Wzbq69giWXuDjmv1XAMZx6
+announcing: /dns4/monorail.proxy.rlwy.net/tcp/54321
+bootstrap: /dns4/monorail.proxy.rlwy.net/tcp/54321/p2p/12D3KooWKiD4GjUwYGbXKkHkcHV4i5Wzbq69giWXuDjmv1XAMZx6
+```
+
+Note the port is the **proxy's**, not 4001 — 4001 is what the container listens on
+inside Railway. `announcing` and `peer-id` are still reported on their own because
+they answer different questions when something is wrong: an empty `announcing` is a
+relay nobody can be introduced through, and a `peer-id` that changed between
+deploys invalidates every bootstrap address anyone recorded.
+
+The joined line is served from the **HTTPS** endpoint, not read off the TCP port,
+which is what makes it safe to paste: it lets a member confirm they are reaching
+the relay they intended rather than something sitting in its place. A relay that
+announces nothing has no `bootstrap` entry at all rather than one naming its own
+loopback — that case is a misconfiguration, and startup logs a warning saying so.
 
 ### Step 6 — Consider running a second one
 
@@ -210,9 +219,9 @@ Do **not** use the generated **domain** (`*.up.railway.app`). That is HTTPS for 
 health endpoint and cannot carry libp2p. Do not use an address from the deployment
 logs either: those are the container's own, and they change on every deploy.
 
-Confirm it took by opening `/health` — `announcing` should list what you set. If it
-is empty, the variable is not reaching the process, and startup logs a warning
-saying so.
+Confirm it took by opening `/health` — `announcing` should list what you set, and
+`bootstrap` the same address with the peer id on the end. If they are empty, the
+variable is not reaching the process, and startup logs a warning saying so.
 
 Usually, elsewhere, you do not need it. The relay announces its own routable listen
 addresses, and a client builds its circuit address from whatever address it used
@@ -230,7 +239,7 @@ and nothing looks wrong, this is the first thing to check.
 
 | Path | Response |
 |---|---|
-| `/health` | `200` with `{"status":"ready","listening":[…]}` once listening; `503` with `{"status":"starting"}` before |
+| `/health` | `200` with `{"status":"ready","listening":[…],"announcing":[…],"bootstrap":[…]}` once listening; `503` with `{"status":"starting"}` before. `bootstrap` is the address to give a network, ready to paste |
 | `/peer-id` | `{"peer_id":"12D3Koo…"}`, or `null` before the identity loads |
 | `/` | A plain string |
 

@@ -39,6 +39,14 @@ struct Health {
     ready: bool,
     peer_id: Option<String>,
     listening: Vec<String>,
+    /// The addresses to paste into a network's relay list.
+    ///
+    /// `announcing` and `peer_id` joined, which is the form a client will
+    /// accept — reported rather than left to be assembled by whoever reads it,
+    /// for the same reason it is printed (see `bootstrap_address`). Empty when
+    /// nothing is announced, which is a misconfiguration rather than a relay
+    /// whose bootstrap address is its own loopback.
+    bootstrap: Vec<String>,
     /// What this relay tells clients it can be reached on.
     ///
     /// Reported separately from `listening`, because they answer different
@@ -84,6 +92,22 @@ async fn main() -> Result<(), String> {
     }
     health.lock().expect("health lock").announcing =
         announced.iter().map(ToString::to_string).collect();
+
+    // The line to paste into a network's relay list, joined here rather than by
+    // hand. Everything needed for it is already on screen and in two pieces:
+    // `peer-id:` names the relay and `announcing:` names where it answers, and
+    // a client will take only the two together (§5.4 — an address with no peer
+    // id cannot be checked to be the relay the network meant, so `kols relay
+    // set` refuses one). Splicing them by hand is a step every deploy, and one
+    // that fails as a relay nobody can reach rather than as an error.
+    let bootstrap: Vec<String> = announced
+        .iter()
+        .map(|address| bootstrap_address(address, &peer_id))
+        .collect();
+    for line in &bootstrap {
+        println!("bootstrap: {line}");
+    }
+    health.lock().expect("health lock").bootstrap = bootstrap;
 
     // Said at startup, where somebody deploying this is already looking, rather
     // than left to be inferred from clients failing later. A relay whose own
@@ -134,6 +158,16 @@ async fn run(
                     println!("listening: {address}/p2p/{peer_id}");
                     let mut guard = health.lock().expect("health lock");
                     guard.listening.push(address.to_string());
+                    // Deliberately no `bootstrap:` line here, though the string
+                    // is right there. A listen address is what this process
+                    // bound, which on any host worth relaying through includes
+                    // loopback and a private container address — and a relay
+                    // announcing nothing has already been warned about above,
+                    // loudly, for exactly that reason. Labelling those
+                    // `bootstrap:` would contradict the warning in the same log
+                    // and hand somebody a confident-looking line that reaches
+                    // only the machine it was printed on. What a reservation
+                    // carries is the announced set, so that is what gets named.
                     // Ready means reachable, and this is the first moment that
                     // is true rather than merely intended.
                     guard.ready = true;
@@ -337,6 +371,22 @@ fn railway_proxy_address() -> Result<Vec<Multiaddr>, String> {
 }
 
 /// A multiaddress, or a `host:port` converted into one.
+/// An announced address with the peer id appended, unless it already names one.
+///
+/// `RELAY_PUBLIC_ADDR` takes any valid multiaddress, so it may already carry a
+/// `/p2p/…`. Appending a second produces a string no client will dial, and the
+/// symptom of that is a relay that looks configured and is never reached — the
+/// same shape of failure as announcing nothing, which is why this checks rather
+/// than trusting the documented form.
+fn bootstrap_address(address: &Multiaddr, peer_id: &str) -> String {
+    let text = address.to_string();
+    if text.contains("/p2p/") {
+        text
+    } else {
+        format!("{text}/p2p/{peer_id}")
+    }
+}
+
 fn parse_address(name: &str, entry: &str) -> Result<Multiaddr, String> {
     if entry.starts_with('/') {
         return entry
@@ -436,8 +486,15 @@ fn spawn_health_endpoint(port: u16, health: Arc<Mutex<Health>>) {
                     .map(|address| format!("\"{address}\""))
                     .collect::<Vec<_>>()
                     .join(",");
+                let bootstrap = snapshot
+                    .bootstrap
+                    .iter()
+                    .map(|address| format!("\"{address}\""))
+                    .collect::<Vec<_>>()
+                    .join(",");
                 let body = format!(
-                    "{{\"status\":\"{}\",\"listening\":[{listening}],\"announcing\":[{announcing}]}}",
+                    "{{\"status\":\"{}\",\"listening\":[{listening}],\
+                     \"announcing\":[{announcing}],\"bootstrap\":[{bootstrap}]}}",
                     if snapshot.ready { "ready" } else { "starting" }
                 );
                 // 503 until the relay is actually listening. A platform health
@@ -507,6 +564,37 @@ mod address_tests {
 
         let refused = parse_address("T", "monorail.proxy.rlwy.net:https").unwrap_err();
         assert!(refused.contains("port number"), "{refused}");
+    }
+}
+
+#[cfg(test)]
+mod bootstrap_tests {
+    use super::bootstrap_address;
+    use intranet_transport::Multiaddr;
+
+    const PEER: &str = "12D3KooWAT1R2JjcZbnVUKLX8Xo1Qg5APTWMkpHarHY4Uo1YpGzT";
+
+    fn addr(text: &str) -> Multiaddr {
+        text.parse().expect("valid multiaddress")
+    }
+
+    #[test]
+    fn the_line_is_the_announced_address_and_the_peer_id_together() {
+        // What a deploy previously left somebody to splice by hand, and what
+        // `kols relay set` will actually take.
+        assert_eq!(
+            bootstrap_address(&addr("/dns4/switchback.proxy.rlwy.net/tcp/55503"), PEER),
+            format!("/dns4/switchback.proxy.rlwy.net/tcp/55503/p2p/{PEER}")
+        );
+    }
+
+    #[test]
+    fn an_address_that_already_names_the_relay_is_left_alone() {
+        // RELAY_PUBLIC_ADDR takes any multiaddress, and somebody who has been
+        // splicing this by hand for a while may well paste the spliced form
+        // back in. Two peer ids is a string nothing dials.
+        let already = format!("/dns4/relay.example/tcp/4001/p2p/{PEER}");
+        assert_eq!(bootstrap_address(&addr(&already), PEER), already);
     }
 }
 
