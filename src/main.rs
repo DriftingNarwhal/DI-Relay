@@ -23,8 +23,8 @@
 //! there is nothing to flush on shutdown.
 
 use intranet_identity::{MasterSeed, NetworkId, PerNetworkIdentity};
-use intranet_transport::{NodeEvent, RelayLimits, RelayNode};
 use intranet_transport::Multiaddr;
+use intranet_transport::{NodeEvent, RelayLimits, RelayNode};
 use std::sync::{Arc, Mutex};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
@@ -400,9 +400,10 @@ fn parse_address(name: &str, entry: &str) -> Result<Multiaddr, String> {
              /dns4/host.example/tcp/54321 or host.example:54321"
         )
     })?;
-    let port: u16 = port.trim().parse().map_err(|_| {
-        format!("{name}: '{entry}' ends in '{port}', which is not a port number")
-    })?;
+    let port: u16 = port
+        .trim()
+        .parse()
+        .map_err(|_| format!("{name}: '{entry}' ends in '{port}', which is not a port number"))?;
     // Bracketed IPv6 as a dashboard prints it, then a literal address, then a
     // name. `dns4` rather than `dns` because every documented relay address uses
     // it, and a client matches a relay's address family against its own
@@ -552,7 +553,9 @@ mod address_tests {
             "/ip4/198.51.100.7/tcp/4001"
         );
         assert_eq!(
-            parse_address("T", "[2001:db8::1]:4001").unwrap().to_string(),
+            parse_address("T", "[2001:db8::1]:4001")
+                .unwrap()
+                .to_string(),
             "/ip6/2001:db8::1/tcp/4001"
         );
     }
