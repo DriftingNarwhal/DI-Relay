@@ -8,7 +8,7 @@ under those same terms.
 
 ## The gate
 
-`cargo clippy --all-targets` and `cargo fmt --all --check` must be clean before a change
-lands, and the binary must build. This crate is deliberately thin — the relay itself is
+`cargo test`, `cargo clippy --all-targets` and `cargo fmt --all --check` must be clean before
+a change lands, and the binary must build. This crate is deliberately thin — the relay itself is
 `intranet_transport::RelayNode`, tested in the protocol repository — so behaviour changes
 usually belong upstream rather than here.
