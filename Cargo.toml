@@ -18,3 +18,14 @@ path = "src/main.rs"
 intranet-transport = { git = "https://github.com/DriftingNarwhal/distributed-intranet", tag = "v1.2.0" }
 intranet-identity = { git = "https://github.com/DriftingNarwhal/distributed-intranet", tag = "v1.2.0" }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util", "signal", "time"] }
+
+# Line tables for this crate, no debug information for dependencies: a
+# backtrace still names a file and line here, and a debug build stops carrying
+# full DWARF for all of libp2p. Matches the protocol and client repositories,
+# and keeps build output inside the budget of the host it is developed on.
+[profile.dev]
+debug = "line-tables-only"
+split-debuginfo = "unpacked"
+
+[profile.dev.package."*"]
+debug = false
