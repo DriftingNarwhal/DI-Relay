@@ -1,0 +1,102 @@
+# Keeps the relay on the protocol it is a wrapper for.
+#
+# The relay builds from distributed-intranet's `main`, pinned to an exact commit
+# by Cargo.lock. Nothing upstream tells this repository when that commit is
+# out of date, and for a month nothing did: the deployed relay sat on a tag
+# while fixes it needed landed upstream, because cutting a tag, moving the pin
+# and redeploying were three manual steps that nothing prompted.
+#
+# So this looks every day, and whenever it is run by hand. If `main` has moved
+# in anything the relay is built from — any crate except the harness, or the
+# workspace's manifests — it updates the lock, checks the release build, and
+# opens a pull request, or refreshes the one already open. It never pushes to
+# `main`: Railway deploys `main`, so merging the pull request is the redeploy,
+# and that stays a person's decision.
+#
+# It builds and does not test. The tests run on a developer's machine, where a
+# failure arrives with all of its output, and the pull request says to run the
+# relay gate before merging.
+
+name: Follow the protocol
+
+on:
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: follow-protocol
+  cancel-in-progress: false
+
+jobs:
+  follow:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compare the pinned protocol commit with main
+        id: compare
+        run: |
+          set -euo pipefail
+          pinned=$(grep -A2 '^name = "intranet-transport"' Cargo.lock \
+            | sed -n 's/^source = ".*#\([0-9a-f]\{40\}\)"$/\1/p')
+          test -n "$pinned" || { echo "no protocol commit found in Cargo.lock" >&2; exit 1; }
+          git clone --quiet --filter=blob:none --no-checkout \
+            https://github.com/DriftingNarwhal/distributed-intranet protocol
+          head=$(git -C protocol rev-parse origin/main)
+          echo "pinned=$pinned" >> "$GITHUB_OUTPUT"
+          relevant=(-- crates Cargo.toml Cargo.lock ':(exclude)crates/intranet-harness')
+          if [ "$pinned" = "$head" ] || git -C protocol diff --quiet "$pinned" "$head" "${relevant[@]}"; then
+            echo "Nothing the relay builds from has changed since ${pinned:0:7}."
+            echo "behind=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "behind=true" >> "$GITHUB_OUTPUT"
+            git -C protocol log --no-merges --format='- `%h` %s' "$pinned..$head" "${relevant[@]}" > changes.md
+            cat changes.md
+          fi
+
+      - name: Update the lock to main
+        if: steps.compare.outputs.behind == 'true'
+        run: cargo update -p intranet-transport
+
+      - name: Check the release build
+        if: steps.compare.outputs.behind == 'true'
+        run: cargo build --release --locked
+
+      - name: Open or refresh the pull request
+        if: steps.compare.outputs.behind == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PINNED: ${{ steps.compare.outputs.pinned }}
+        run: |
+          set -euo pipefail
+          now=$(grep -A2 '^name = "intranet-transport"' Cargo.lock \
+            | sed -n 's/^source = ".*#\([0-9a-f]\{40\}\)"$/\1/p')
+          title="Follow distributed-intranet to ${now:0:7}"
+          {
+            echo "The relay builds from distributed-intranet \`${PINNED:0:7}\`. \`main\` is now at \`${now:0:7}\`, and these commits change something the relay is built from:"
+            echo
+            cat changes.md
+            echo
+            echo "This updates \`Cargo.lock\` only. The release build passed here. **The tests were not run**: they run locally (\`docs/decisions/0006\` in the workspace). Before merging, run the relay gate:"
+            echo
+            echo '```'
+            echo 'cargo clippy --all-targets && cargo fmt --all --check && cargo build --release && cargo test'
+            echo '```'
+            echo
+            echo "**Merging redeploys the relay**, since Railway deploys \`main\`. This pull request is refreshed in place while it is open, so the newest protocol commit is always the one on offer."
+          } > body.md
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -C follow-protocol
+          git commit --quiet -am "$title" -m "$(cat changes.md)"
+          git push --force --quiet origin follow-protocol
+          if [ "$(gh pr view follow-protocol --json state -q .state 2>/dev/null || true)" = "OPEN" ]; then
+            gh pr edit follow-protocol --title "$title" --body-file body.md
+          else
+            gh pr create --base main --head follow-protocol --title "$title" --body-file body.md
+          fi

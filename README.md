@@ -278,16 +278,33 @@ deciding whether to run one, or wondering why a relay is allowed to be untrusted
 
 ### Why this is a wrapper and not a relay implementation
 
-The relay itself is `intranet_transport::RelayNode`, pulled from that repository
-at the tag `Cargo.toml` names — deliberately not restated here, because a version
-written in prose is one that drifts from the one that builds. This binary only
-reads configuration, serves health, starts it, and shuts down cleanly.
+The relay itself is `intranet_transport::RelayNode`, pulled from that repository's
+`main` at the exact commit `Cargo.lock` names — deliberately not restated here,
+because a version written in prose is one that drifts from the one that builds.
+This binary only reads configuration, serves health, starts it, and shuts down
+cleanly.
 
-**Which tag is a deployment decision, not a detail.** The ceilings above live in
-`RelayNode`, so moving the pin is what changes what a relay enforces, and leaving
-it still is what kept every deployed relay on the old figures after the spec
-changed. `a_circuit_cannot_carry_a_conversation` in `src/main.rs` fails if a pin
-ever falls that far behind again.
+**Which commit is a deployment decision, not a detail.** The ceilings above live
+in `RelayNode`, so moving the pin is what changes what a relay enforces, and
+leaving it still is what kept every deployed relay on the old figures after the
+spec changed. `a_circuit_cannot_carry_a_conversation` in `src/main.rs` fails if a
+pin ever falls that far behind again.
+
+**And it is kept current by a pull request rather than by memory.** This relay
+used to follow a tag, and a protocol fix reached it only once somebody cut a tag,
+moved the pin and redeployed — three manual steps that nothing prompted, so the
+deployed relay spent a month without fixes it needed. Now
+`.github/workflows/follow-protocol.yml` checks every day (and when run by hand
+from the Actions tab) whether the protocol's `main` has changed anything the
+relay is built from. If it has, it updates `Cargo.lock`, checks the release
+build, and opens a pull request titled *Follow distributed-intranet to …*, or
+refreshes the one already open. **Merging it redeploys the relay**, since
+Railway deploys `main`, so that step stays yours. The workflow builds and does
+not test; run the gate in `CONTRIBUTING.md` before merging.
+
+GitHub switches off a scheduled workflow in a public repository after 60 days
+with no activity, and emails before it does. Running it once by hand turns it
+back on.
 
 That is deliberate. `RelayNode` is covered by the protocol repository's
 conformance suite — its reservation and circuit ceilings are asserted against a

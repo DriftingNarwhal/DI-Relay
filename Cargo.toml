@@ -15,8 +15,17 @@ path = "src/main.rs"
 # announces its external addresses, both of which are covered by tests in the
 # upstream repository. A hand-rolled relay here would be a second copy of that
 # logic, free to drift from the copy the conformance suite actually exercises.
-intranet-transport = { git = "https://github.com/DriftingNarwhal/distributed-intranet", tag = "v1.2.0" }
-intranet-identity = { git = "https://github.com/DriftingNarwhal/distributed-intranet", tag = "v1.2.0" }
+#
+# **It follows the protocol's `main`, and `Cargo.lock` is the pin.** This used
+# to name a tag, and a tag needs somebody to cut it, then somebody to move it
+# here, then a redeploy, with nothing prompting any of the three. The deployed
+# relay sat on `v1.2.0` for a month while fixes it needed (`071ccb2`, announcing
+# only what a peer could dial) landed upstream. Now
+# `.github/workflows/follow-protocol.yml` notices a change in the crates the
+# relay builds from, updates the lock to it, checks it builds, and opens a pull
+# request. Merging that is the redeploy, and it stays a person's decision.
+intranet-transport = { git = "https://github.com/DriftingNarwhal/distributed-intranet", branch = "main" }
+intranet-identity = { git = "https://github.com/DriftingNarwhal/distributed-intranet", branch = "main" }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util", "signal", "time"] }
 
 # Line tables for this crate, no debug information for dependencies: a
