@@ -1,2 +1,8 @@
 /target
 *.env
+
+# Agent tooling (Claude Code and the like) lives in a separate workspace repo, not here.
+/.claude/
+/CLAUDE.md
+/AGENTS.md
+.mcp.json
