@@ -1707,7 +1707,7 @@ dependencies = [
 [[package]]
 name = "intranet-crypto"
 version = "0.1.0"
-source = "git+https://github.com/DriftingNarwhal/distributed-intranet?branch=main#e92aca6148d76b08c9489a48577d3859c814cdea"
+source = "git+https://github.com/DriftingNarwhal/distributed-intranet?branch=main#be9a9bec6440c583ef2fc0d3d31f7da08a3db1aa"
 dependencies = [
  "blake3",
  "ed25519-dalek 3.0.0",
@@ -1719,7 +1719,7 @@ dependencies = [
 [[package]]
 name = "intranet-epoch"
 version = "0.1.0"
-source = "git+https://github.com/DriftingNarwhal/distributed-intranet?branch=main#e92aca6148d76b08c9489a48577d3859c814cdea"
+source = "git+https://github.com/DriftingNarwhal/distributed-intranet?branch=main#be9a9bec6440c583ef2fc0d3d31f7da08a3db1aa"
 dependencies = [
  "chacha20poly1305 0.11.0",
  "intranet-crypto",
@@ -1736,7 +1736,7 @@ dependencies = [
 [[package]]
 name = "intranet-governance"
 version = "0.1.0"
-source = "git+https://github.com/DriftingNarwhal/distributed-intranet?branch=main#e92aca6148d76b08c9489a48577d3859c814cdea"
+source = "git+https://github.com/DriftingNarwhal/distributed-intranet?branch=main#be9a9bec6440c583ef2fc0d3d31f7da08a3db1aa"
 dependencies = [
  "intranet-crypto",
  "intranet-identity",
@@ -1746,7 +1746,7 @@ dependencies = [
 [[package]]
 name = "intranet-identity"
 version = "0.1.0"
-source = "git+https://github.com/DriftingNarwhal/distributed-intranet?branch=main#e92aca6148d76b08c9489a48577d3859c814cdea"
+source = "git+https://github.com/DriftingNarwhal/distributed-intranet?branch=main#be9a9bec6440c583ef2fc0d3d31f7da08a3db1aa"
 dependencies = [
  "bip39",
  "intranet-crypto",
@@ -1758,7 +1758,7 @@ dependencies = [
 [[package]]
 name = "intranet-invite"
 version = "0.1.0"
-source = "git+https://github.com/DriftingNarwhal/distributed-intranet?branch=main#e92aca6148d76b08c9489a48577d3859c814cdea"
+source = "git+https://github.com/DriftingNarwhal/distributed-intranet?branch=main#be9a9bec6440c583ef2fc0d3d31f7da08a3db1aa"
 dependencies = [
  "intranet-crypto",
  "intranet-governance",
@@ -1769,7 +1769,7 @@ dependencies = [
 [[package]]
 name = "intranet-ledger"
 version = "0.1.0"
-source = "git+https://github.com/DriftingNarwhal/distributed-intranet?branch=main#e92aca6148d76b08c9489a48577d3859c814cdea"
+source = "git+https://github.com/DriftingNarwhal/distributed-intranet?branch=main#be9a9bec6440c583ef2fc0d3d31f7da08a3db1aa"
 dependencies = [
  "intranet-crypto",
  "intranet-governance",
@@ -1780,7 +1780,7 @@ dependencies = [
 [[package]]
 name = "intranet-realtime"
 version = "0.1.0"
-source = "git+https://github.com/DriftingNarwhal/distributed-intranet?branch=main#e92aca6148d76b08c9489a48577d3859c814cdea"
+source = "git+https://github.com/DriftingNarwhal/distributed-intranet?branch=main#be9a9bec6440c583ef2fc0d3d31f7da08a3db1aa"
 dependencies = [
  "chacha20poly1305 0.11.0",
  "intranet-crypto",
@@ -1794,7 +1794,7 @@ dependencies = [
 [[package]]
 name = "intranet-storage"
 version = "0.1.0"
-source = "git+https://github.com/DriftingNarwhal/distributed-intranet?branch=main#e92aca6148d76b08c9489a48577d3859c814cdea"
+source = "git+https://github.com/DriftingNarwhal/distributed-intranet?branch=main#be9a9bec6440c583ef2fc0d3d31f7da08a3db1aa"
 dependencies = [
  "chacha20poly1305 0.11.0",
  "fastcdc",
@@ -1808,9 +1808,10 @@ dependencies = [
 [[package]]
 name = "intranet-transport"
 version = "0.1.0"
-source = "git+https://github.com/DriftingNarwhal/distributed-intranet?branch=main#e92aca6148d76b08c9489a48577d3859c814cdea"
+source = "git+https://github.com/DriftingNarwhal/distributed-intranet?branch=main#be9a9bec6440c583ef2fc0d3d31f7da08a3db1aa"
 dependencies = [
  "async-trait",
+ "either",
  "futures",
  "intranet-crypto",
  "intranet-epoch",
